@@ -60,9 +60,9 @@
 extern crate log;
 
 extern crate hyper;
+extern crate hyper_rustls;
 extern crate rustc_serialize;
 extern crate url;
-extern crate multipart;
 
 mod error;
 mod util;
@@ -74,18 +74,14 @@ use util::Params;
 
 use rustc_serialize::{json, Decodable};
 use std::env;
-use std::fs;
 use std::io::Read;
-use std::path::{Path, PathBuf};
 use std::sync::mpsc;
 use std::time::Duration;
 use std::thread;
 use hyper::{Client, Url};
 use hyper::client::IntoUrl;
-use hyper::client::request::Request;
-use hyper::method::Method;
 use hyper::header::{Connection, ContentType, ContentLength};
-use multipart::client::Multipart;
+use hyper::net::HttpsConnector;
 
 /// API-URL prefix
 pub const API_URL : &'static str = "https://api.telegram.org/bot";
@@ -93,17 +89,13 @@ pub const API_URL : &'static str = "https://api.telegram.org/bot";
 // RequestType let you choose between a post request or a multipart request
 enum RequestType {
     Post,
-    Multipart(SendPath),
-}
-
-// SendPath is used in multipart request to send a local file or an id string
-enum SendPath {
-    File(String, PathBuf),
-    Id(String, String),
 }
 
 fn create_default_client() -> Client {
-    let mut c = Client::new();
+
+    let ssl = hyper_rustls::TlsClient::new();
+    let connector = HttpsConnector::new(ssl);
+    let mut c = Client::with_connector(connector);
     c.set_read_timeout(Some(Duration::new(5, 0)));
     c.set_write_timeout(Some(Duration::new(5, 0)));
     c
@@ -264,123 +256,6 @@ impl Api {
         self.send_request("getUpdates", params, RequestType::Post)
     }
 
-    /// Corresponds to the `sendPhoto` method of the API.
-    pub fn send_photo(&self, chat_id: Integer, path: String,
-                      caption: Option<String>,
-                      reply_to_message_id: Option<Integer>,
-                      reply_markup: Option<ReplyMarkup>)
-                      -> Result<Message> {
-        // Prepare parameters
-        let mut params = Params::new();
-        params.add_get("chat_id", chat_id);
-        params.add_get_opt("caption", caption);
-        params.add_get_opt("reply_to_message_id", reply_to_message_id);
-        try!(params.add_get_json_opt("reply_markup", reply_markup));
-
-        // Convert path string to SendPath
-        let path_file = Api::detect_file_or_id("photo", path);
-        // Execute request
-        self.send_request("sendPhoto", params, RequestType::Multipart(path_file))
-    }
-
-    /// Corresponds to the `sendAudio` method of the API.
-    pub fn send_audio(&self, chat_id: Integer, path: String,
-                      duration: Option<Integer>,
-                      performer: Option<String>,
-                      title: Option<String>,
-                      reply_to_message_id: Option<Integer>,
-                      reply_markup: Option<ReplyMarkup>)
-                      -> Result<Message> {
-        // Prepare parameters
-        let mut params = Params::new();
-        params.add_get("chat_id", chat_id);
-        params.add_get_opt("duration", duration);
-        params.add_get_opt("performer", performer);
-        params.add_get_opt("title", title);
-        params.add_get_opt("reply_to_message_id", reply_to_message_id);
-        try!(params.add_get_json_opt("reply_markup", reply_markup));
-
-        // Convert path string to SendPath
-        let path_file = Api::detect_file_or_id("audio", path);
-        // Execute request
-        self.send_request("sendAudio", params, RequestType::Multipart(path_file))
-    }
-
-    /// Corresponds to the `sendVoice` method of the API.
-    pub fn send_voice(&self, chat_id: Integer, path: String,
-                      duration: Option<Integer>,
-                      reply_to_message_id: Option<Integer>,
-                      reply_markup: Option<ReplyMarkup>)
-                      -> Result<Message> {
-        // Prepare parameters
-        let mut params = Params::new();
-        params.add_get("chat_id", chat_id);
-        params.add_get_opt("duration", duration);
-        params.add_get_opt("reply_to_message_id", reply_to_message_id);
-        try!(params.add_get_json_opt("reply_markup", reply_markup));
-
-        // Convert path string to SendPath
-        let path_file = Api::detect_file_or_id("voice", path);
-        // Execute request
-        self.send_request("sendVoice", params, RequestType::Multipart(path_file))
-    }
-
-
-    /// Corresponds to the `sendDocument` method of the API.
-    pub fn send_document(&self, chat_id: Integer, path: String,
-                         reply_to_message_id: Option<Integer>,
-                         reply_markup: Option<ReplyMarkup>)
-                         -> Result<Message> {
-        // Prepare parameters
-        let mut params = Params::new();
-        params.add_get("chat_id", chat_id);
-        params.add_get_opt("reply_to_message_id", reply_to_message_id);
-        try!(params.add_get_json_opt("reply_markup", reply_markup));
-
-        // Convert path string to SendPath
-        let path_file = Api::detect_file_or_id("document", path);
-        // Execute request
-        self.send_request("sendDocument", params, RequestType::Multipart(path_file))
-    }
-
-    /// Corresponds to the `sendSticker` method of the API.
-    pub fn send_sticker(&self, chat_id: Integer, path: String,
-                        reply_to_message_id: Option<Integer>,
-                        reply_markup: Option<ReplyMarkup>)
-                        -> Result<Message> {
-        // Prepare parameters
-        let mut params = Params::new();
-        params.add_get("chat_id", chat_id);
-        params.add_get_opt("reply_to_message_id", reply_to_message_id);
-        try!(params.add_get_json_opt("reply_markup", reply_markup));
-
-        // Convert path string to SendPath
-        let path_file = Api::detect_file_or_id("sticker", path);
-        // Execute request
-        self.send_request("sendSticker", params, RequestType::Multipart(path_file))
-    }
-
-    /// Corresponds to the `sendVideo` method of the API.
-    pub fn send_video(&self, chat_id: Integer, path: String,
-                      caption: Option<String>,
-                      duration: Option<Integer>,
-                      reply_to_message_id: Option<Integer>,
-                      reply_markup: Option<ReplyMarkup>)
-                      -> Result<Message> {
-        // Prepare parameters
-        let mut params = Params::new();
-        params.add_get("chat_id", chat_id);
-        params.add_get_opt("caption", caption);
-        params.add_get_opt("duration", duration);
-        params.add_get_opt("reply_to_message_id", reply_to_message_id);
-        try!(params.add_get_json_opt("reply_markup", reply_markup));
-
-        // Convert path string to SendPath
-        let path_file = Api::detect_file_or_id("video", path);
-        // Execute request
-        self.send_request("sendVideo", params, RequestType::Multipart(path_file))
-    }
-
     /// Corresponds to the `setWebhook` method of the API.
     ///
     /// **Note:**
@@ -454,16 +329,6 @@ impl Api {
     // Private methods
     // =======================================================================
 
-    fn detect_file_or_id(name: &str, path: String) -> SendPath {
-        // When PathExt becomes stable, use Path::new(&path).exists() instead of this!
-        let check = fs::metadata(&path);
-        if path.contains(".") && check.is_ok() && check.unwrap().is_file() {
-            SendPath::File(name.to_owned(), Path::new(&path).to_path_buf())
-        } else {
-            SendPath::Id(name.to_owned(), path)
-        }
-    }
-
     fn send_request<T: Decodable>(&self, method: &str,
                                   p: Params, typ: RequestType) -> Result<T> {
         Self::request(&self.client, &self.url, method, p, typ)
@@ -473,59 +338,6 @@ impl Api {
                              method: &str, p: Params, typ: RequestType) -> Result<T> {
         match typ {
             RequestType::Post => Self::post_request(client, url, method, p),
-            RequestType::Multipart(sendpath) => Self::multipart_request(url, method, p, sendpath),
-        }
-    }
-
-    fn multipart_request<T: Decodable>(url: &Url, method: &str,
-                                       p: Params, file: SendPath) -> Result<T> {
-        // Prepare URL for request: Clone and change the last path fragment
-        // to the method name and append GET parameters.
-        let mut url = url.clone();
-        // if theres a path: Change it
-        if let Ok(mut segments_mut) = url.path_segments_mut() {
-            segments_mut.pop().push(method.into()); // Change last into method name
-        }
-
-        let r = try!(Request::new(Method::Post, url));
-        let mut req = try!(Multipart::from_request(r));
-
-        for &(k, ref v) in p.get_params().into_iter() {
-            try!(req.write_text(k, v));
-        }
-
-        try!(match file {
-            SendPath::File(name, path) => {
-                match path.to_str() {
-                    Some(p) => req.write_file(&name, p),
-                    None => return Err(Error::InvalidPath("Invalid path given.".into())),
-                }
-            },
-            SendPath::Id(name, id) => req.write_text(&name, id),
-        });
-
-        // Send request and check if it failed
-        let mut resp = try!(req.send());
-
-        // Read response into String and return error if it failed
-        let mut body = String::new();
-        try!(resp.read_to_string(&mut body));
-
-        // Try to decode response as JSON representing a Response
-        match try!(json::decode(&body)) {
-            // If the response says that there was an error: Return API-Error
-            // with the given description.
-            Response { ok: false, description: Some(desc), ..} => {
-                Err(Error::Api(desc))
-            },
-            // If response is "ok": Return the result.
-            Response { ok: true, result: Some(res), ..} => {
-                Ok(res)
-            },
-            // This should never occur: If "ok"==false, "description" should
-            // always be Some. If "ok"==true, then "result" should always be
-            // Some. We could also panic in this case.
-            _ => Err(Error::InvalidState("Invalid server response".into())),
         }
     }
 
@@ -660,6 +472,7 @@ impl Listener {
                         Err(e) => {
                             // TODO Add better logic here to distinguish between
                             //      transient and persistent errors.
+                            println!("{:?}", e);
                             error!("{:?}", e);
                             continue
                         }
